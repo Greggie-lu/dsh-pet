@@ -291,7 +291,7 @@ export const zh = {
     '碎碎念时从表情包池随机抽一张，连同那句话一起显示（图片映射在配置文件顶层 memes）。token：碎碎念本来就每次生成都要调一次模型，配图只是把抽中那张的名称+描述（约 100 字符 / ≈60 token）加进同一次请求，增量可忽略。',
   chatImageToggle: '对话配图',
   chatImageToggleHint:
-    '对话时由 AI 按当前语境从表情包池挑一张配图（可不挑；图片映射在配置文件顶层 memes）。token：每条消息都要把整张清单附进请求，当前约 1.1k 字符（≈650 token，约碎碎念配图的 11 倍），并随图片数量线性增长；关掉则一个字符都不附。',
+    '对话时由 AI 按当前语境从表情包池挑一张配图（可不挑；图片映射在配置文件顶层 memes）。只有轻松闲聊、情绪回应、打招呼/道别才建议配图；知识、技术、代码和复杂问题不应配图。默认只带前 4 张清单，开销远低于旧版整张清单；关掉则一个字符都不附。',
   confineToggle: '锁定在当前屏幕',
   confineToggleHint:
     '多屏用户：开了之后宠物只在当前所在那块屏幕内活动——甩出去的宠物只在松手时所在那块屏内弹（屏缝当墙，不飞到隔壁屏），自主漫游也只在当前所在那块屏内走（越出屏缝的那一步直接取消）。关掉则照常跨屏飞行 / 跨屏行走。只影响桌面模式——浏览器 overlay 本来就只在视口内活动。',
@@ -353,9 +353,28 @@ export const zh = {
   chatMemoryHint:
     '每次对话请求携带的最近历史轮数（1 轮 = 1 问 1 答；0 = 不带历史，每句都是全新对话）。对话记忆本身全存不删，此值只决定截多少进上下文——越大越记得住，也越费 token。全局默认，所有宠物共用（pet pack 可在自己种类文件里单独覆盖）。',
   invalidChatMemory: '请检查对话历史条数：需为 ≥ 0 的数字。',
+  chatPromptLabel: '对话人设',
+  chatPromptHint:
+    '只影响「对话」，不影响碎碎念。碎碎念要短、要萌；对话这份允许正常回答、解释概念、给建议，不必限制在 20 字。实际 system = 这段 + 名字 + 当前时间，所以别在这里写名字和日期。',
+  invalidChatPrompt: '请检查对话人设：不能为空。',
+  chatMaxTokens: '对话输出上限（token）',
+  chatMaxTokensHint:
+    '单次对话最多生成多少 token。到达上限时不会返回半截回答，而是显示下面的兜底文案。512 约够两三段正常回答；复杂问题建议配合兜底。',
+  invalidChatMaxTokens: '请检查对话输出上限：需为 1~32768 的整数。',
+  chatTemperature: '对话温度',
+  chatTemperatureHint:
+    '0~2。越低越稳定，越高越发散。问答建议 0.7；想更活泼可以调高，但更容易跑题。',
+  invalidChatTemperature: '请检查对话温度：需为 0~2 的数字。',
+  chatFallbackText: '对话兜底文案',
+  chatFallbackTextHint:
+    '输出达到上限、生成超时或被取消时显示。它不会写进对话记忆，避免污染下一轮上下文。',
+  invalidChatFallbackText: '请检查对话兜底文案：不能为空。',
+  chatBalanceToggle: '对话读取余额',
+  chatBalanceToggleHint:
+    '开启后，把宿主最近一次查到的余额格式化进对话上下文，问“我余额还有多少”可以直接回答。只读缓存，不会额外发余额查询请求；余额数字会随对话请求发给当前模型，介意隐私可关闭。',
   chatImageLimit: '对话配图张数上限',
   chatImageLimitHint:
-    '对话时发给模型的表情包清单最多几张（「前 N 张」= 配置里写在前面的那 N 条，想让哪几张优先被发出去就把顺序往前挪）。整张清单是每条消息都要附的，token 随张数线性增长——张数一多就是纯烧钱，限制成前 N 张，模型只从这几张里挑。0 = 不限制（全部发）。内置默认 10。全局默认，所有宠物共用（pet pack 可在自己种类文件里覆盖）。只影响对话选图：碎碎念只带抽中的那一张。',
+    '对话时发给模型的表情包清单最多几张（「前 N 张」= 配置里写在前面的那 N 条，想让哪几张优先被发出去就把顺序往前挪）。整张清单是每条消息都要附的，token 随张数线性增长。默认 4：保留“简单问题回个表情包”的能力，又把开销压下来。0 = 不限制（全部发）。',
   invalidChatImageLimit: '请检查对话配图张数上限：需为 ≥ 0 的数字（0 = 不限制）。',
   notifyTest: '测试弹窗',
   notifyTestOk: '测试通知已发送，请查看桌面右下角。',
@@ -484,7 +503,7 @@ export const en = {
     'Attach one random meme from the pool to each whisper line (image mapping lives in the top-level `memes` config field). Tokens: a whisper already calls the model every cycle, so the image only appends the name + description of that one meme (~100 chars / ~60 tokens) to the same request — negligible.',
   chatImageToggle: 'Chat images',
   chatImageToggleHint:
-    'Let the AI pick one meme from the pool that fits the current context (optional; mapping lives in the top-level `memes` config field). Tokens: every message carries the whole catalog — currently ~1.1k chars (~650 tokens, about 11x the whisper case) and growing with the number of images; turning this off appends nothing at all.',
+    'Let the AI pick one meme from the pool that fits the current context (optional; mapping lives in the top-level `memes` config field). Suggest images only for casual chat, emotional replies, greetings or goodbyes — not for knowledge, technical, code or complex questions. The catalog is capped to the first 4 entries by default, far cheaper than the old whole-list behavior; turning this off appends nothing at all.',
   confineToggle: 'Lock to the current screen',
   confineToggleHint:
     'Multi-monitor: when on, the pet stays inside the screen it is currently on — a thrown pet bounces only inside the screen it was released on (screen seams act as walls, so it never flies to the neighbouring monitor), and autonomous wandering only walks within the screen it is currently on (a step that would cross the seam is simply cancelled). Turn this off to let it cross screens as usual. Desktop only — the browser overlay always stays inside the viewport anyway.',
@@ -554,9 +573,28 @@ export const en = {
   chatMemoryHint:
     'How many recent rounds each chat request carries (1 round = 1 question + 1 answer; 0 = no history, every message starts fresh). The memory itself keeps everything — this only decides how much goes into the context: higher remembers more and costs more tokens. Global default, shared by every pet (a pet pack may override it in its own kind file).',
   invalidChatMemory: 'Check the chat history rounds: it must be a number ≥ 0.',
+  chatPromptLabel: 'Chat persona',
+  chatPromptHint:
+    'Applies to Chat only, not whispers. Whispers stay short and cute; this persona may answer normally, explain concepts, and give advice without the 20-character limit. The actual system prompt is this text + the pet name + the current time, so do not repeat the name or date here.',
+  invalidChatPrompt: 'Check the chat persona: it cannot be empty.',
+  chatMaxTokens: 'Chat output limit (tokens)',
+  chatMaxTokensHint:
+    'Maximum tokens per chat reply. When the limit is hit, the plugin shows the fallback text below instead of a half-finished answer. 512 is roughly two or three normal paragraphs; pair it with a clear fallback for complex questions.',
+  invalidChatMaxTokens: 'Check the chat output limit: it must be an integer between 1 and 32768.',
+  chatTemperature: 'Chat temperature',
+  chatTemperatureHint:
+    '0–2. Lower is steadier, higher is more varied. 0.7 is a good Q&A default; raise it for a livelier tone, at the risk of drifting off topic.',
+  invalidChatTemperature: 'Check the chat temperature: it must be a number between 0 and 2.',
+  chatFallbackText: 'Chat fallback text',
+  chatFallbackTextHint:
+    'Shown when the output limit is hit, generation times out, or the request is cancelled. It is not written to chat memory, so it cannot pollute the next turn.',
+  invalidChatFallbackText: 'Check the chat fallback text: it cannot be empty.',
+  chatBalanceToggle: 'Let chat read the balance',
+  chatBalanceToggleHint:
+    'When on, the last balance the host fetched is formatted into the chat context, so "how much balance do I have?" can be answered directly. It reads the cache only and never triggers an extra balance request; the number is sent with the chat request to the current model, so turn it off if that matters for privacy.',
   chatImageLimit: 'Chat image limit',
   chatImageLimitHint:
-    'How many memes at most are listed to the model during chat ("first N" = the first N you wrote in the config, so move the ones you want sent to the front). That whole list is attached to every message and tokens grow linearly with the count, so a long list is pure burn; capping it to the first N makes the model pick only among those. 0 = no limit (send everything). Built-in default 10. Global default, shared by every pet (a pet pack may override it in its own kind file). Chat only — a whisper carries just the one meme it drew.',
+    'How many memes at most are listed to the model during chat ("first N" = the first N you wrote in the config, so move the ones you want sent to the front). That whole list is attached to every message and tokens grow linearly with the count. Default 4 keeps the "send a meme for a simple hello" ability while cutting the cost. 0 = no limit (send everything).',
   invalidChatImageLimit: 'Check the chat image limit: it must be a number ≥ 0 (0 = no limit).',
   notifyTest: 'Test notification',
   notifyTestOk: 'Test notification sent — check the bottom-right of your desktop.',
@@ -1065,14 +1103,23 @@ export function makePetConfigSection(rt: {
     // 与四个全局开关同一套语义：只改本地状态，随「保存」整包写入（不做即时写入）。
     const [whisperModel, setWhisperModel] = useState<ModelSelection>({ provider: '', model: '' });
     const [chatModel, setChatModel] = useState<ModelSelection>({ provider: '', model: '' });
+    // 对话行为（全局默认）：人设 / 输出上限 / 温度 / 兜底文案。
+    // 与两个模型 / 四个开关同一套语义：只改本地状态，随「保存」整包写入。
+    const [chatPrompt, setChatPrompt] = useState('');
+    const [chatMaxTokens, setChatMaxTokens] = useState(512);
+    const [chatTemperature, setChatTemperature] = useState(0.7);
+    const [chatFallbackText, setChatFallbackText] = useState(
+      '我想不明白，主人你去找 DeepSeek Harness 吧，我要吃饭了。',
+    );
+    const [chatBalance, setChatBalance] = useState(true);
     // 对话历史条数（全局默认：每次对话请求带多少历史进上下文，写用户级配置的 chatMemoryRounds）。
     // 与两个模型 / 四个开关同一套语义：只改本地状态，随「保存」整包写入（不做即时写入）。
-    // 初值 5 = 内置默认（assets/config.jsonc）；下面的加载效应会用成品 main.chatMemoryRounds 覆盖。
-    const [chatMemory, setChatMemory] = useState(5);
+    // 初值 8 = 内置默认（assets/config.jsonc）；下面的加载效应会用成品 main.chatMemoryRounds 覆盖。
+    const [chatMemory, setChatMemory] = useState(8);
     // 对话配图张数上限（全局默认：对话时发给模型的表情包清单最多几张，写用户级配置的 chatImageLimit）。
-    // 同上：只改本地状态，随「保存」整包写入。初值 10 = 内置默认（砍掉整张清单的约 2/3 开销）；
+    // 同上：只改本地状态，随「保存」整包写入。初值 4 = 内置默认（保留简单闲聊配图，压低每条消息开销）；
     // 加载效应会用成品 main.chatImageLimit 覆盖。
-    const [chatImageLimit, setChatImageLimit] = useState(10);
+    const [chatImageLimit, setChatImageLimit] = useState(4);
     // 条目级人设（main 那一份 whisperPrompt）：设置页只编辑**实例级**覆盖（pets[].whisperPrompt），
     // 这个值只用于"留空时跟随什么"的预览（输入框占位符 + 问号说明），不参与提交。
     const [entryPrompt, setEntryPrompt] = useState('');
@@ -1114,10 +1161,18 @@ export function makePetConfigSection(rt: {
       if (cm && typeof cm.provider === 'string' && typeof cm.model === 'string') {
         setChatModel({ provider: cm.provider, model: cm.model });
       }
-      // 对话历史条数：成品同样已填满（内置默认 5 ← 用户层），合法就原样上屏
+      // 对话历史条数：成品同样已填满（内置默认 8），合法就原样上屏
       const cmr = Number(m.chatMemoryRounds);
       if (Number.isFinite(cmr) && cmr >= 0) setChatMemory(cmr);
-      // 对话配图张数上限：同上（内置默认 0 = 不限制）
+      // 对话行为：成品已填满（内置默认 chatPrompt / 512 / 0.7 / 兜底文案）
+      if (typeof m.chatPrompt === 'string') setChatPrompt(m.chatPrompt);
+      const cmt = Number(m.chatMaxTokens);
+      if (Number.isInteger(cmt) && cmt >= 1 && cmt <= 32768) setChatMaxTokens(cmt);
+      const ctemp = Number(m.chatTemperature);
+      if (Number.isFinite(ctemp) && ctemp >= 0 && ctemp <= 2) setChatTemperature(ctemp);
+      if (typeof m.chatFallbackText === 'string') setChatFallbackText(m.chatFallbackText);
+      if (typeof m.chatBalanceContext === 'boolean') setChatBalance(m.chatBalanceContext);
+      // 对话配图张数上限：同上（内置默认 4）
       const cil = Number(m.chatImageLimit);
       if (Number.isFinite(cil) && cil >= 0) setChatImageLimit(cil);
     }, []);
@@ -1255,6 +1310,23 @@ export function makePetConfigSection(rt: {
         setMsg({ kind: 'err', text: t('invalidChatMemory') });
         return false;
       }
+      // 对话行为：与宿主 topFieldValid 同一套规则
+      if (chatPrompt.trim() === '') {
+        setMsg({ kind: 'err', text: t('invalidChatPrompt') });
+        return false;
+      }
+      if (!Number.isInteger(chatMaxTokens) || chatMaxTokens < 1 || chatMaxTokens > 32768) {
+        setMsg({ kind: 'err', text: t('invalidChatMaxTokens') });
+        return false;
+      }
+      if (!Number.isFinite(chatTemperature) || chatTemperature < 0 || chatTemperature > 2) {
+        setMsg({ kind: 'err', text: t('invalidChatTemperature') });
+        return false;
+      }
+      if (chatFallbackText.trim() === '') {
+        setMsg({ kind: 'err', text: t('invalidChatFallbackText') });
+        return false;
+      }
       // 对话配图张数上限：同上（0 = 不限制，合法）
       if (!Number.isFinite(chatImageLimit) || chatImageLimit < 0) {
         setMsg({ kind: 'err', text: t('invalidChatImageLimit') });
@@ -1303,6 +1375,12 @@ export function makePetConfigSection(rt: {
           chatModel: chatModel,
           // 对话历史条数（全局默认白名单字段）：宿主用 topFieldValid 校验（有限且 ≥ 0）
           chatMemoryRounds: chatMemory,
+          // 对话行为（全局默认白名单字段）：人设 / 输出上限 / 温度 / 兜底文案
+          chatPrompt: chatPrompt,
+          chatMaxTokens: chatMaxTokens,
+          chatTemperature: chatTemperature,
+          chatFallbackText: chatFallbackText,
+          chatBalanceContext: chatBalance,
           // 对话配图张数上限（同上；0 = 不限制）
           chatImageLimit: chatImageLimit,
           // 字体（全局默认白名单字段）：宿主用 fontValid 整段校验（family 白名单 / size 4~200 /
@@ -1462,14 +1540,20 @@ export function makePetConfigSection(rt: {
       );
 
     /** 「全局默认」的一个数字格：标签 + 问号在上、数字输入在下（说明 = t(label + 'Hint') 进问号） */
-    const globalNumField = (label: string, value: number, setter: (v: number) => void): ReturnType<typeof h> =>
+    const globalNumField = (
+      label: string,
+      value: number,
+      setter: (v: number) => void,
+      step = '1',
+      min = '0',
+    ): ReturnType<typeof h> =>
       field(
         t(label),
         h('input', {
           type: 'number',
           className: inputClass,
-          step: '1',
-          min: '0',
+          step,
+          min,
           value: String(value),
           disabled: busy,
           onChange: (e: ChangeEvent<HTMLInputElement>) => setter(Number(e.target.value)),
@@ -1821,12 +1905,46 @@ export function makePetConfigSection(rt: {
                 modelCell('chatModel', chatModel, setChatModel, true),
               ],
             }),
+            // 对话人设：与碎碎念人设分开，允许正常长度、正常回答。
+            field(
+              t('chatPromptLabel'),
+              h('textarea', {
+                className: inputClass + ' dsh-pet-cfg__area',
+                rows: 5,
+                value: chatPrompt,
+                disabled: busy,
+                onChange: (e: ChangeEvent<HTMLTextAreaElement>) => setChatPrompt(e.target.value),
+              }),
+              t('chatPromptHint'),
+            ),
+            h('div', {
+              className: 'dsh-pet-cfg__grid2',
+              children: [
+                globalNumField('chatMaxTokens', chatMaxTokens, setChatMaxTokens),
+                globalNumField('chatTemperature', chatTemperature, setChatTemperature, '0.1', '0'),
+              ],
+            }),
             h('div', {
               className: 'dsh-pet-cfg__grid4',
               children: [
                 globalNumField('chatMemory', chatMemory, setChatMemory),
                 globalNumField('chatImageLimit', chatImageLimit, setChatImageLimit),
               ],
+            }),
+            field(
+              t('chatFallbackText'),
+              h('input', {
+                type: 'text',
+                className: inputClass,
+                value: chatFallbackText,
+                disabled: busy,
+                onChange: (e: ChangeEvent<HTMLInputElement>) => setChatFallbackText(e.target.value),
+              }),
+              t('chatFallbackTextHint'),
+            ),
+            h('div', {
+              className: 'dsh-pet-cfg__grid2',
+              children: [toggleCell('chatBalanceToggle', chatBalance, busy, setChatBalance)],
             }),
           ],
         }),

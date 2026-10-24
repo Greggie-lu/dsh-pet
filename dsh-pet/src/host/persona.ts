@@ -1,8 +1,11 @@
 /**
- * 人设拼装（host 半侧，纯逻辑）：碎碎念与对话共用的 system 提示词在**这一处**拼好。
+ * 人设拼装（host 半侧，纯逻辑）：碎碎念与对话的 system 提示词在**这一处**拼好。
+ * 两者共用同一套「名字 + 时间」拼装，但人设正文是两份：
+ *   - 碎碎念：`whisperPrompt`（可被 pets[].whisperPrompt 覆盖）——短句、卖萌；
+ *   - 对话：`chatPrompt`——允许正常长度、正常回答，不故意装傻。
  *
  * 拼装 = 三段，顺序固定：
- *   ① 人设正文：`pets[].whisperPrompt`（实例级）优先，没写回落到所属条目顶层的 `whisperPrompt`；
+ *   ① 人设正文：碎碎念走 `pets[].whisperPrompt` → 条目 `whisperPrompt`；对话走条目 `chatPrompt`；
  *   ② 名字声明：「你的名字是“<name>”。」——name 已经是实例级（缺失时 mergePet 已按 id 填好），
  *      所以两只人设相同的宠物也各有自己的名字行；
  *   ③ 时间背景：`time-context.ts` 的 timeContextOf(new Date())——日期/星期/时刻/时段/工作日或周末/节日从句，
@@ -33,9 +36,21 @@ export function petPersona(conf: Record<string, unknown>, pet: Record<string, un
   return typeof entry === 'string' ? entry : '';
 }
 
+/**
+ * 对话生效的人设正文（不含名字与时间）：条目顶层 `chatPrompt`。
+ *
+ * 与 whisperPrompt 分开是本次改造的核心：碎碎念要短、要萌；对话要能正常回答。
+ * 对话不做实例级覆盖（Phase 1 只提供全局默认），pet pack 可在自己的种类文件顶层覆盖。
+ * 空串时仍会拼名字 + 时间，不会把 `undefined` 塞进 system。
+ */
+export function chatPersona(conf: Record<string, unknown>): string {
+  const entry = conf.chatPrompt;
+  return typeof entry === 'string' ? entry : '';
+}
+
 /** composeSystemPrompt 的入参 */
 export interface SystemPromptParts {
-  /** 已回落到生效值的人设正文（petPersona 的结果；空串 = 没有人设，只有名字 + 时间） */
+  /** 已回落到生效值的人设正文（petPersona / chatPersona 的结果；空串 = 没有人设，只有名字 + 时间） */
   prompt: string;
   /** 显示名（pets[].name；缺失/空按 id 处理） */
   name: string;

@@ -10,7 +10,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { composeSystemPrompt, petPersona } from './persona.ts';
+import { chatPersona, composeSystemPrompt, petPersona } from './persona.ts';
 
 /** 固定时刻：2026-10-21（星期三）14:15，无节日窗口——时间行稳定可断言 */
 const NOW = new Date(2026, 9, 21, 14, 15);
@@ -42,6 +42,18 @@ describe('petPersona —— 实例级 → 条目级 → 空', () => {
     assert.equal(petPersona({}, {}), '');
     assert.equal(petPersona({ whisperPrompt: 42 }, {}), '');
     assert.equal(petPersona({ whisperPrompt: '' }, {}), '');
+  });
+});
+
+describe('chatPersona —— 对话专用，不回落到碎碎念人设', () => {
+  test('用条目 chatPrompt', () => {
+    assert.equal(chatPersona({ chatPrompt: '对话人设', whisperPrompt: '碎碎念人设' }), '对话人设');
+  });
+
+  test('chatPrompt 缺失/非字符串 → 空串（不能误用 whisperPrompt）', () => {
+    assert.equal(chatPersona({ whisperPrompt: '碎碎念人设' }), '');
+    assert.equal(chatPersona({ chatPrompt: 42 }), '');
+    assert.equal(chatPersona({}), '');
   });
 });
 

@@ -823,6 +823,60 @@ describe('saveUserConfig —— 对话历史条数 chatMemoryRounds（白名单 
   });
 });
 
+describe('saveUserConfig —— 对话行为 chatPrompt / chatMaxTokens / chatTemperature / chatFallbackText', () => {
+  test('四个字段都进白名单，字符串 trim、数字归一化', () => {
+    const out = saveOnce({
+      pets: PETS,
+      chatPrompt: '  正常回答，不要装傻  ',
+      chatMaxTokens: '512',
+      chatTemperature: '0.7',
+      chatFallbackText: '  我要吃饭了  ',
+    });
+    assert.equal(out?.chatPrompt, '正常回答，不要装傻');
+    assert.equal(out?.chatMaxTokens, 512);
+    assert.equal(out?.chatTemperature, 0.7);
+    assert.equal(out?.chatFallbackText, '我要吃饭了');
+  });
+
+  test('chatPrompt / chatFallbackText 为空 → 整体拒绝', () => {
+    assert.equal(saveOnce({ pets: PETS, chatPrompt: '   ' }), null);
+    assert.equal(saveOnce({ pets: PETS, chatFallbackText: '' }), null);
+    assert.equal(saveOnce({ pets: PETS, chatPrompt: 42 }), null);
+    assert.equal(saveOnce({ pets: PETS, chatFallbackText: {} }), null);
+  });
+
+  test('chatMaxTokens 必须是 1~32768 的整数', () => {
+    for (const bad of [0, -1, 1.5, 32769, 'many', Infinity, NaN]) {
+      assert.equal(saveOnce({ pets: PETS, chatMaxTokens: bad }), null, `${String(bad)} 必须被拒绝`);
+    }
+  });
+
+  test('chatTemperature 必须是 0~2 的数字', () => {
+    for (const bad of [-0.1, 2.1, 'hot', Infinity, NaN]) {
+      assert.equal(saveOnce({ pets: PETS, chatTemperature: bad }), null, `${String(bad)} 必须被拒绝`);
+    }
+  });
+
+  test('未传时透传磁盘旧值；磁盘上也没有则不凭空造字段', () => {
+    const existing = {
+      pets: PETS,
+      chatPrompt: '旧人设',
+      chatMaxTokens: 256,
+      chatTemperature: 0.5,
+      chatFallbackText: '旧兜底',
+    };
+    const kept = saveOnce({ pets: PETS }, existing);
+    assert.equal(kept?.chatPrompt, '旧人设');
+    assert.equal(kept?.chatMaxTokens, 256);
+    assert.equal(kept?.chatTemperature, 0.5);
+    assert.equal(kept?.chatFallbackText, '旧兜底');
+    const fresh = saveOnce({ pets: PETS }) ?? {};
+    for (const key of ['chatPrompt', 'chatMaxTokens', 'chatTemperature', 'chatFallbackText']) {
+      assert.equal(key in fresh, false, `${key} 不得凭空写入`);
+    }
+  });
+});
+
 describe('saveUserConfig —— 对话配图张数上限 chatImageLimit（白名单 + 透传保留）', () => {
   test('随请求体写入（设置页「AI 模型与对话上下文」的数字输入框）', () => {
     const out = saveOnce({ pets: PETS, chatImageLimit: 8 });

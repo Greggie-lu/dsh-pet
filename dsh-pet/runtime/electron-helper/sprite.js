@@ -13,6 +13,27 @@ const OPEN_SHORTCUT_HINT = /Mac/i.test(navigator.platform || navigator.userAgent
 /** 本次点击是否按住了「呼出 DSH」的修饰键（Ctrl / Cmd） */
 const isOpenShortcut = (e) => !!(e && (e.ctrlKey || e.metaKey));
 
+// 桌面拖拽专用弹簧：比全局位置弹簧更紧，降低透明窗口逐帧跟随的视觉延迟。
+// K/C 取临界阻尼（2√600 ≈ 49），不 overshoot；只用于 startDragFollow，不改 S.springStep，
+// 因此位置指令、抛掷、碰撞等既有行为不受影响。
+const DRAG_SPRING_K = 600;
+const DRAG_SPRING_C = 49;
+// 把一帧拆成 <=1/120s 的子步：帧率掉到 30fps 时，高刚度显式积分仍不会来回抖动。
+const DRAG_SUBSTEP = 1 / 120;
+const dragSpringStep = (state, target, dt, power = 1) => {
+  let { x, y, vx, vy } = state;
+  let remaining = Math.max(0, Math.min(dt, 1 / 20));
+  while (remaining > 0) {
+    const h = Math.min(remaining, DRAG_SUBSTEP);
+    vx += ((target.x - x) * DRAG_SPRING_K - vx * DRAG_SPRING_C) * power * h;
+    vy += ((target.y - y) * DRAG_SPRING_K - vy * DRAG_SPRING_C) * power * h;
+    x += vx * h;
+    y += vy * h;
+    remaining -= h;
+  }
+  return { x, y, vx, vy };
+};
+
 // ---------- 点击音效（内置 assets/sound/click-duck.wav） ----------
 // 与浏览器端 client/pet.ts 同一套参数：单例 <audio>、音量 0.5、100ms 节流、失败静默。
 // 复用素材通道：bridge 模式由主进程取回音频，普通模式仍走 HTTP。
@@ -949,14 +970,15 @@ class PetSprite {
       const now = performance.now();
       const dt = Math.min((now - last) / 1000, 1 / 30);
       last = now;
-      const vel = this.dragVel;
-      let x = this.pos.x;
-      let y = this.pos.y;
-      vel.vx = S.springStep(vel.vx, x, target.x, dt, this.physics.throwPower);
-      vel.vy = S.springStep(vel.vy, y, target.y, dt, this.physics.throwPower);
-      x += vel.vx * dt;
-      y += vel.vy * dt;
-      this.sendBounds(x, y); // 移动的是窗口（this.pos 实时更新）；sprite 在本窗口内不动
+      const next = dragSpringStep(
+        { x: this.pos.x, y: this.pos.y, vx: this.dragVel.vx, vy: this.dragVel.vy },
+        target,
+        dt,
+        this.physics.throwPower,
+      );
+      this.dragVel.vx = next.vx;
+      this.dragVel.vy = next.vy;
+      this.sendBounds(next.x, next.y); // 移动的是窗口（this.pos 实时更新）；sprite 在本窗口内不动
       this.dragFollow = requestAnimationFrame(step);
     };
     this.dragFollow = requestAnimationFrame(step);
@@ -1963,6 +1985,17 @@ class PetSprite {
     const workTerminal = this.workState === 'success' || this.workState === 'error';
     const slot =
       workTerminal && workOn ? 'work' : whisperOn ? 'whisper' : balanceOn ? 'balance' : workOn ? 'work' : 'none';
+    if (slot === 'none') {
+      // 先只收起可见性，**不要**在淡出前改尺寸类（is-whisper / has-img / is-expanded）：
+      // 聊天气泡用的是 0.7473 倍字号，先删掉 is-whisper 会让它在 0.25s 的 opacity 淡出期间
+      // 先跳回正常字号——视觉上就是“突然放大再闪一下消失”。尺寸类留到下一次真正显示时再更新。
+      // is-clickable 必须立刻摘掉：不可见的余额气泡不能再挡点击。
+      this.bubble.classList.remove('is-on');
+      this.bubble.classList.remove('is-clickable');
+      window.__dshPetDebug.lastBubbleTitle = '';
+      this.syncInputBusy(); // 气泡没了 → 撤销它的控件矩形与 busy 标记（否则整窗还留着可点区域）
+      return;
+    }
     // 配图两种形态二选一（host 判定层保证）：url 直接用那个完整地址，image 按素材根拼表情包路径。
     // 样式/class 两份共用（都在 shared 的 MEME_BUBBLE_CSS），只是 src 的来源不同。
     const whisperImg =
@@ -1982,13 +2015,6 @@ class PetSprite {
     const expanded = clickable && this.balanceViewIndex > 0;
     this.bubble.classList.toggle('is-clickable', clickable);
     this.bubble.classList.toggle('is-expanded', expanded);
-    if (slot === 'none') {
-      // 三者都没有可显示的内容：隐藏（不占位，也就不会挡住任何一层）
-      this.bubble.classList.remove('is-on');
-      window.__dshPetDebug.lastBubbleTitle = '';
-      this.syncInputBusy(); // 气泡没了 → 撤销它的控件矩形与 busy 标记（否则整窗还留着可点区域）
-      return;
-    }
     this.bubble.innerHTML = '';
     if (slot === 'work') {
       const line = document.createElement('div');

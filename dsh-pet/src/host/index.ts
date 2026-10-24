@@ -105,6 +105,8 @@ import { listBalanceProviders, queryBalance, registerBalanceProvider } from './b
 import { generateWhisper } from './whisper';
 import { automaticWhisperSchedule, type StandaloneWhisperPolicy } from './whisper-policy';
 import { generateChat, type ChatMemoryMessage } from './chat';
+import { composeChatContext } from './chat-context';
+import type { BalanceResult } from './balance/types';
 import { configuredModel } from './model-selection';
 import { limitPool, pickMeme, readMemePool } from './memes';
 import {
@@ -161,7 +163,7 @@ import {
 } from './notify-events';
 import { profileNameFrom, storageEntries } from './storage-paths';
 import { parseStateWaitQuery, PollStateStore } from './state';
-import { composeSystemPrompt, petPersona } from './persona';
+import { composeSystemPrompt, chatPersona, petPersona } from './persona';
 import {
   HelperProcess,
   defaultElectronExe,
@@ -809,21 +811,38 @@ export function apply(ctx: any): void {
 
   // ---- 配置消费：唯一入口 readAllConfig（./config）——返回值绝对正确，这里只读字段，零校验 ----
 
-  /** 某宠物的最终人设 system：**实例级** `pets[].whisperPrompt` 优先，没写回落到所属条目
-   *  （写在该条目 `pets` 里的实例 → 那个条目；主配置的实例 → `main`）的 whisperPrompt（合并器已填默认）。
+  /** 某宠物的最终 system：
+   *  - `mode: 'whisper'`：**实例级** `pets[].whisperPrompt` 优先，没写回落到所属条目的 `whisperPrompt`；
+   *  - `mode: 'chat'`：条目顶层 `chatPrompt`（对话专用，允许正常长度与正常回答）。
    *  拼装本身在 ./persona（纯函数、有单测）：人设正文 + 一句名字声明（name，缺失已按 id）+ 一行时间背景
-   *  （日期/星期/时刻/时段/工作日或周末/节日）——碎碎念与对话共用同一份拼装。
+   *  （日期/星期/时刻/时段/工作日或周末/节日）。
    *  时间每次现算（这里传 new Date()），所以拿到的永远是**当前**时刻，不需要额外的刷新机制。
    *
    *  收 `findPetInstance` 的**命中结果**而不是 `(petId, cfg)`：两个调用方都已经解析过了，这里再查一次
    *  只会多出一处"查不到就兜底 main"的不可达分支。 */
-  const petSystemPrompt = (found: { conf: Record<string, unknown>; pet: Record<string, unknown> }): string =>
+  const petSystemPrompt = (
+    found: { conf: Record<string, unknown>; pet: Record<string, unknown> },
+    mode: 'whisper' | 'chat',
+  ): string =>
     composeSystemPrompt({
-      prompt: petPersona(found.conf, found.pet),
+      prompt: mode === 'chat' ? chatPersona(found.conf) : petPersona(found.conf, found.pet),
       name: String(found.pet.name ?? ''),
       id: String(found.pet.id ?? ''),
       now: new Date(),
     });
+
+  /** 对话专用参数：配置合并器已填默认；这里只在合法时取值，非法交给 chat.ts 的兜底。 */
+  const chatOptions = (conf: Record<string, unknown>): { maxTokens?: number; temperature?: number; fallbackText?: string } => {
+    const maxTokens = Number(conf.chatMaxTokens);
+    const temperature = Number(conf.chatTemperature);
+    return {
+      ...(Number.isFinite(maxTokens) && maxTokens > 0 ? { maxTokens } : {}),
+      ...(Number.isFinite(temperature) ? { temperature } : {}),
+      ...(typeof conf.chatFallbackText === 'string' && conf.chatFallbackText.trim() !== ''
+        ? { fallbackText: conf.chatFallbackText }
+        : {}),
+    };
+  };
 
   /** 对话记忆轮数（1 轮 = 1 问 1 答）：该宠物**所属条目**的 chatMemoryRounds（合并器已填默认非负数字）。
    *  同样收**已解析的条目配置**：两个调用方都已经拿到 `findPetInstance` 的结果。 */
@@ -853,7 +872,7 @@ export function apply(ctx: any): void {
     // ——配置随时可能被设置页 / 右键菜单 / 手改文件改动，两次读之间就是窗口。
     // **明确失败：不生成、不写 S**。写下去就是一只已不存在宠物的幽灵叶子（/state 里常驻到进程重启）。
     if (!found) return { ok: false, reason: 'unknown-pet', message: '没有这只桌宠：' + petId };
-    const system = petSystemPrompt(found);
+    const system = petSystemPrompt(found, 'whisper');
     // 配图：全局开关关闭 / 池为空 / 池内图片全缺失 → 纯文本（不报错，退化为原行为）
     const meme =
       found.conf.whisperImageEnabled === true
@@ -894,7 +913,7 @@ export function apply(ctx: any): void {
     petId: string,
     text: string,
   ): Promise<
-    | { ok: true; text: string; image?: string }
+    | { ok: true; text: string; image?: string; fallback?: true }
     | { ok: false; reason: 'provider-missing' | 'generate-error' | 'unknown-pet'; message?: string }
   > =>
     withMemoryLock(async () => {
@@ -906,8 +925,22 @@ export function apply(ctx: any): void {
       // 分桶，外加一只幽灵叶子（/state 里常驻到进程重启）。
       if (!found) return { ok: false, reason: 'unknown-pet', message: '没有这只桌宠：' + petId };
       const rounds = memoryRounds(found.conf);
-      // 人设：实例级 whisperPrompt 优先，没写回落所属条目（与碎碎念同一拼装）
-      const system = petSystemPrompt(found);
+      // 人设：对话专用 chatPrompt（与碎碎念的 whisperPrompt 分开）
+      const system = petSystemPrompt(found, 'chat');
+      // 轻量状态注入：余额展示走 sections.balance，LLM 看不到；这里把宿主已缓存的余额格式化进
+      // system，让“我余额还有多少”能直接回答。只读缓存，不额外发网络请求。
+      // chatBalanceContext=false 时不注入（隐私开关，设置页可关）。
+      let chatSystem = system;
+      if (found.conf.chatBalanceContext !== false) {
+        let model: { provider: string; model: string } | undefined;
+        try {
+          model = ctx.agentDefaultModel.currentSelection();
+        } catch {
+          model = undefined;
+        }
+        const balance = state.read().sections.balance.data as BalanceResult | null;
+        chatSystem = system + '\n\n' + composeChatContext({ model, balance, balanceAt: lastBalanceAt });
+      }
       // 配图：开关关闭 → 空池（指令与解析都不介入，与旧行为逐字一致）；目录链按所属条目取。
       // 张数上限（chatImageLimit，0 = 不限制）：整张清单每条消息都要附，截断后费用上限可控。
       const pool =
@@ -929,8 +962,23 @@ export function apply(ctx: any): void {
       // 不能写 slice(-rounds * 2)：-0 在 JS 里 === 0，slice(-0) 返回整个数组而不是空。
       const list = sliceMemoryRounds(entry.messages, rounds);
       // 模型：条目配置的 chatModel 优先（留空 = 不指定）；生成侧失败会回落到当前对话的模型重试一次
-      const generated = await generateChat(ctx, system, list, text, pool, configuredModel(found.conf, 'chatModel'));
+      const generated = await generateChat(
+        ctx,
+        chatSystem,
+        list,
+        text,
+        pool,
+        configuredModel(found.conf, 'chatModel'),
+        chatOptions(found.conf),
+      );
       if (!generated.ok) return generated;
+      // 预算/超时兜底：只展示，不写 memory。把“我想不明白”写进记忆会污染下一轮上下文，
+      // 也会让模型误以为这是自己认真给出的回答。
+      if (generated.fallback) {
+        state.writePet(petId, 'say', { text: generated.text });
+        log.info(`[dsh-pet] 对话触发兜底 pet=${petId}，${generated.text.length} 字`);
+        return { ok: true as const, text: generated.text, fallback: true as const };
+      }
       const now = Date.now();
       entry.messages.push({ role: 'user', content: text, ts: now });
       // 记忆只存正文（配图属展示层，不进上下文——否则下次请求会把标记当历史读回去）
@@ -1000,6 +1048,9 @@ export function apply(ctx: any): void {
     return { version, locale: 'zh-CN', timezoneOffsetSeconds: -new Date().getTimezoneOffset() * 60 };
   };
 
+  /** 最近一次余额刷新完成时刻（ms，0 = 还没刷过）：对话上下文里标注“截至几点”，避免把旧值当实时。 */
+  let lastBalanceAt = 0;
+
   const refreshBalance = async (manual = false): Promise<void> => {
     // 开始 + 结果各一行：此前成功路径**完全静默**，logs.txt 里既看不出「有没有查」，
     // 也看不出「查了但余额没变」，排错只能靠人肉盯 /state。
@@ -1023,6 +1074,7 @@ export function apply(ctx: any): void {
         },
       );
       state.writeSection('balance', mark(result));
+      lastBalanceAt = Date.now();
       // 失败也写 S（前端弹文字说明），日志同样留一条：否则「查了、失败了」与「根本没查」
       // 在文件里长得一模一样。成功用 info，失败用 warn（亮度不同，扫一眼就能分辨）。
       if (result.ok) {
@@ -1044,6 +1096,7 @@ export function apply(ctx: any): void {
           message,
         }),
       );
+      lastBalanceAt = Date.now();
       log.warn('[dsh-pet] 余额刷新异常：' + message);
     }
   };

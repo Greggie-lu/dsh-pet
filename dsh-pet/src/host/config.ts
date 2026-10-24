@@ -104,6 +104,11 @@ const GLOBAL_DEFAULT_KEYS = [
   'chatImageEnabled',
   'chatImageLimit',
   'chatMemoryRounds',
+  'chatPrompt',
+  'chatMaxTokens',
+  'chatTemperature',
+  'chatFallbackText',
+  'chatBalanceContext',
   'whisperModel',
   'chatModel',
   'eventsRefreshSec',
@@ -388,6 +393,20 @@ function topFieldValid(key: string, value: unknown): boolean {
   switch (key) {
     case 'whisperPrompt':
       return typeof value === 'string' && value.length > 0;
+    case 'chatPrompt':
+      return typeof value === 'string' && value.trim().length > 0;
+    case 'chatMaxTokens': {
+      const n = Number(value);
+      return Number.isInteger(n) && n >= 1 && n <= 32768;
+    }
+    case 'chatTemperature': {
+      const n = Number(value);
+      return Number.isFinite(n) && n >= 0 && n <= 2;
+    }
+    case 'chatFallbackText':
+      return typeof value === 'string' && value.trim().length > 0;
+    case 'chatBalanceContext':
+      return typeof value === 'boolean';
     case 'chatMemoryRounds': {
       const n = Number(value);
       return Number.isFinite(n) && n >= 0;
@@ -799,6 +818,18 @@ export function saveUserConfig(
   // 与 chatMemoryRounds 同一套语义——传了就校验后进白名单，没传则走下面的透传保留。
   const cil = o.chatImageLimit;
   if (cil !== undefined && !topFieldValid('chatImageLimit', cil)) return null;
+  // chatPrompt / chatMaxTokens / chatTemperature / chatFallbackText：对话行为参数。
+  // 与 chatMemoryRounds 同语义——传了就校验后进白名单，没传则透传保留磁盘旧值。
+  const cp = o.chatPrompt;
+  if (cp !== undefined && !topFieldValid('chatPrompt', cp)) return null;
+  const cmt = o.chatMaxTokens;
+  if (cmt !== undefined && !topFieldValid('chatMaxTokens', cmt)) return null;
+  const ctemp = o.chatTemperature;
+  if (ctemp !== undefined && !topFieldValid('chatTemperature', ctemp)) return null;
+  const cft = o.chatFallbackText;
+  if (cft !== undefined && !topFieldValid('chatFallbackText', cft)) return null;
+  const cbc = o.chatBalanceContext;
+  if (cbc !== undefined && typeof cbc !== 'boolean') return null;
   const cleanModel = (v: Record<string, unknown>): { provider: string; model: string } => ({
     provider: String(v.provider).trim(),
     model: String(v.model).trim(),
@@ -819,6 +850,11 @@ export function saveUserConfig(
   // 数值归一化落盘：请求体传 "9" 也存成 9（与读取侧 topFieldValid 的 Number() 口径一致）
   if (cmr !== undefined) outConfig.chatMemoryRounds = Number(cmr);
   if (cil !== undefined) outConfig.chatImageLimit = Number(cil);
+  if (cp !== undefined) outConfig.chatPrompt = String(cp).trim();
+  if (cmt !== undefined) outConfig.chatMaxTokens = Number(cmt);
+  if (ctemp !== undefined) outConfig.chatTemperature = Number(ctemp);
+  if (cft !== undefined) outConfig.chatFallbackText = String(cft).trim();
+  if (cbc !== undefined) outConfig.chatBalanceContext = cbc;
   // 透传保留：请求体未携带的顶层字段，从 existing（磁盘现有用户文件）原样带回——
   // 设置页只提交 pets(+全局开关+physics+模型+对话历史条数)，手改的 whisperPrompt/memes/... 借此保住。
   // 白名单字段只在「请求体传了」时才算白名单（已由上方写入）；未传时走这里透传磁盘旧值——
@@ -836,6 +872,11 @@ export function saveUserConfig(
   if (cm !== undefined) bodyOwned.add('chatModel');
   if (cmr !== undefined) bodyOwned.add('chatMemoryRounds');
   if (cil !== undefined) bodyOwned.add('chatImageLimit');
+  if (cp !== undefined) bodyOwned.add('chatPrompt');
+  if (cmt !== undefined) bodyOwned.add('chatMaxTokens');
+  if (ctemp !== undefined) bodyOwned.add('chatTemperature');
+  if (cft !== undefined) bodyOwned.add('chatFallbackText');
+  if (cbc !== undefined) bodyOwned.add('chatBalanceContext');
   if (existing && typeof existing === 'object') {
     for (const key of Object.keys(existing)) {
       if (bodyOwned.has(key)) continue; // 白名单字段由请求体决定
