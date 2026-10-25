@@ -220,7 +220,11 @@ describe('源码守卫 —— helper 的两个兜底必须在位', () => {
   const main = readSource(helper + 'main.js');
 
   test('#55-1 兜底显示：ready-to-show 之外还要有"加载完成后仍未显示就 show"', () => {
-    assert.ok(/once\('ready-to-show', \(\) => win\.showInactive\(\)\)/.test(main), '显示不得抢其它应用焦点');
+    assert.ok(
+      /once\('ready-to-show', \(\) => win\.showInactive\(\)\)/.test(main) ||
+        /once\('ready-to-show', \(\) => \{[\s\S]{0,120}?win\.showInactive\(\)/.test(main),
+      '显示不得抢其它应用焦点',
+    );
     assert.ok(
       /once\('did-finish-load'/.test(main),
       '必须有 did-finish-load 兜底（paintWhenInitiallyHidden:false 时 ready-to-show 永不触发）',
